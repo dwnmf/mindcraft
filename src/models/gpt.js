@@ -1,4 +1,4 @@
-import { OpenAIApi, Configuration } from 'openai'; // Ensure proper import
+import { OpenAIApi, Configuration } from 'openai';
 import { getKey, hasKey } from '../utils/keys.js';
 import { strictFormat } from '../utils/text.js';
 
@@ -8,10 +8,10 @@ export class GPT {
         this.baseUrl = url;
         this.apiKey = null;
 
-        let config = {};
+        const config = {};
 
         if (this.modelName && this.modelName.startsWith("grok")) {
-            config.baseURL = "https://api.x.ai/v1";
+            config.basePath = "https://api.x.ai/v1";
             this.apiKey = getKey('XAI_API_KEY');
         } else {
             if (hasKey('OPENAI_ORG_ID')) {
@@ -20,11 +20,10 @@ export class GPT {
             this.apiKey = getKey('OPENAI_API_KEY');
         }
 
-        // Properly set up the configuration for OpenAIApi
         const openAIConfig = new Configuration({
             apiKey: this.apiKey,
-            organization: config.organization, // Include organization if available
-            basePath: config.baseURL, // Use basePath for custom URLs
+            organization: config.organization,
+            basePath: config.basePath,
         });
 
         this.openai = new OpenAIApi(openAIConfig);
@@ -32,14 +31,13 @@ export class GPT {
 
     async sendRequest(turns, systemMessage, stop_seq = '***', retryCount = 0) {
         if (retryCount > 5) {
-            console.error('Maximum retry attempts reached for OpenAI/xAI API.');
+            console.error('Maximum retry attempts reached.');
             return 'Error: Too many retry attempts.';
         }
 
-        let messages = [{ role: 'system', content: systemMessage }].concat(turns);
-
+        const messages = [{ role: 'system', content: systemMessage }, ...turns];
         const pack = {
-            model: this.modelName || "gpt-3.5-turbo",
+            model: this.modelName || "gpt-3.5-turbo-0613",
             messages,
             stop: stop_seq,
         };
@@ -52,35 +50,17 @@ export class GPT {
         try {
             console.log(`Awaiting API response... (Model: ${this.modelName}, Retry: ${retryCount})`);
             const completion = await this.openai.createChatCompletion(pack);
-
-            if (completion.data.choices[0].finish_reason === 'length') {
-                console.warn('Context length exceeded. Trying with shorter context...');
-                return await this.sendRequest(turns.slice(1), systemMessage, stop_seq, retryCount + 1);
-            }
-
-            console.log('Received.');
-            return completion.data.choices[0].message.content;
-
+            const response = completion.data.choices[0].message.content;
+            return response;
         } catch (err) {
-            if (err.message === 'Context length exceeded' || err.code === 'context_length_exceeded') {
-                console.warn('Context length exceeded. Trying with shorter context...');
-                return await this.sendRequest(turns.slice(1), systemMessage, stop_seq, retryCount + 1);
-            } else if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
-                console.warn(`API rate limit or server error (Status ${err.response.status}). Retrying...`);
-                const retryDelay = (2 ** retryCount) * 1000;
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                return await this.sendRequest(turns, systemMessage, stop_seq, retryCount + 1);
-            } else {
-                console.error('API Error:', err); // More detailed error logging
-                return 'My brain disconnected, try again.';
-            }
+            console.error('API Error:', err);
+            return 'Request failed, please try again later.';
         }
     }
 
     async embed(text) {
         if (this.modelName && this.modelName.startsWith("grok")) {
-            console.log("Embeddings are not yet supported for Grok.  Text provided:", text);
-            throw new Error('Embeddings are not supported by Grok'); // Throw error to trigger fallback
+            throw new Error('Embeddings not supported for Grok.');
         }
 
         try {
@@ -88,9 +68,9 @@ export class GPT {
                 model: "text-embedding-ada-002",
                 input: text,
             });
-            return embedding.data.data[0].embedding; // Adjusted based on OpenAI's API response structure
+            return embedding.data.data[0].embedding;
         } catch (error) {
-            console.error("Error creating embedding:", error);
+            console.error("Embedding error:", error);
             throw new Error("Embedding creation failed.");
         }
     }
