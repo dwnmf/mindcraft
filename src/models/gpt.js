@@ -6,25 +6,32 @@ export class GPT {
     constructor(modelName, url = null) {
         this.modelName = modelName;
         this.baseUrl = url;
+        this.apiKey = null; // Will store the appropriate API key
+
 
         let config = {};
 
         if (this.modelName && this.modelName.startsWith("grok")) {
             config.baseURL = "https://api.x.ai/v1"; // Grok's base URL
-        } else if (this.baseUrl) {
-            config.baseURL = this.baseUrl; // Use provided URL for other models
+            this.apiKey = getKey('XAI_API_KEY');       // Use xAI key for Grok
+        } else {  //For other OpenAI models
+            if (this.baseUrl) {
+                config.baseURL = this.baseUrl; 
+            }
+            if (hasKey('OPENAI_ORG_ID')) {
+                config.organization = getKey('OPENAI_ORG_ID');
+            }
+            this.apiKey = getKey('OPENAI_API_KEY'); // Use OpenAI Key for other models.
         }
 
-        if (hasKey('OPENAI_ORG_ID')) {
-            config.organization = getKey('OPENAI_ORG_ID');
-        }
 
-        config.apiKey = getKey('OPENAI_API_KEY');
+        config.apiKey = this.apiKey;  // Set the apiKey in the config
+
 
         this.openai = new OpenAIApi(config);
     }
 
-    async sendRequest(turns, systemMessage, stop_seq = '***', retryCount = 0) {
+    sync sendRequest(turns, systemMessage, stop_seq = '***', retryCount = 0) {
         // Retry logic to handle rate limits or transient errors
         if (retryCount > 5) {
             console.error('Maximum retry attempts reached for OpenAI API.');
@@ -80,18 +87,20 @@ export class GPT {
         return res;
     }
 
-
-
     async embed(text) {
-        try {
-            const embedding = await this.openai.embeddings.create({
-                model: "text-embedding-ada-002", // Most capable embedding model
-                input: text,
-            });
-            return embedding.data[0].embedding;
-        } catch (error) {
-            console.error("Error creating embedding:", error);
-            throw new Error("Embedding creation failed."); // Re-throw to be handled by the caller
-        }
-    }
+      if (this.modelName && this.modelName.startsWith("grok")) {
+        console.log("There is no current support for embeddings with Grok. Text provided:", text);
+        throw new Error('Embeddings are not supported by Grok');
+      }
+      try {
+          const embedding = await this.openai.embeddings.create({
+              model: "text-embedding-ada-002", // Most capable embedding model
+              input: text,
+          });
+          return embedding.data[0].embedding;
+      } catch (error) {
+          console.error("Error creating embedding:", error);
+          throw new Error("Embedding creation failed.");
+      }
+  }
 }
